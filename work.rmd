@@ -5,14 +5,17 @@ date: "04/22/2015"
 output: html_document
 ---
 ##Synopsis
-  TODO: put synopsis here in AT MOST 10 sentences
+  Examine historical storm data for the United States to find out 
+  1) What types of storm events cause the most harm to population health?
+  2) What types of storm events cause the most financial loss?
+  
 ## DataProcessing  
     TODO:Write description 
     TODO: show code (echo=TRUE, cache=TRUE)
     Note : Analysis MUST start from raw data
 ###Assumption about property damage and crop damage units
-The columns are split into xxDMG and xxDMGEXP where xx is PROPor CROP. The DMG column contains a number  
-while EXP contains text
+The columns are split into xxDMG and xxDMGEXP where xx is PROP/CROP. 
+The DMG column contains a number while EXP contains text
 From the description on the website  
 >"Estimates should be rounded to three significant digits, followed by an alphabetical character   
 >signifying the magnitude of the number, i.e., 1.55B for $1,550,000,000. Alphabetical characters  
@@ -21,7 +24,6 @@ From the description on the website
 However the values in the dataset also include symbols ike "?","2","-","+","m","M" 
 For the purposes of this analysis both uppercase and lowercase k,m and b were considered 
 to represent thousand, million and billion and all others ignored as NA
-
 
 ##Results
   TODO: Show Results here
