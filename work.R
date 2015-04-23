@@ -32,10 +32,14 @@ storm$EVTYPE=as.factor(storm$EVTYPE)
 storm$STATE=as.factor(storm$STATE)
 storm$FATALITIES=as.integer(storm$FATALITIES)
 storm$INJURIES=as.integer(storm$INJURIES)
-inj<-aggregate(cbind(FATALITIES,INJURIES)~EVTYPE, data=storm,sum)
-#inj<-storm%>% group_by(EVTYPE)%>%summarize(dead=sum(FATALITIES,na.rm = T),hurt=sum(INJURIES,na.rm=T))
-inj<-arrange(t,desc(dead),desc(hurt))
-topinj<-inj[1:5,]
+#inj<-aggregate(cbind(FATALITIES,INJURIES)~EVTYPE, data=storm,sum)
+inj<-storm%>% group_by(EVTYPE)%>%summarize(dead=sum(FATALITIES,na.rm = T),hurt=sum(INJURIES,na.rm=T))
+#inj<-arrange(t,desc(dead),desc(hurt))
+# find top 10% of fatalities
+quantile(inj$dead,prob=c(0.95,0.99))
+#Gives us 3 - what event types killed more than 3 people in total?
+
+topinj<-inj[inj$dead>3,]
 par("crt"=90,mfrow=c(2,1))
 with(topinj,{
   plot(EVTYPE,FATALITIES,main="FATALITIES",col="red")
