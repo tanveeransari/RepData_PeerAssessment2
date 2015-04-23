@@ -11,3 +11,9 @@
 # produced vignettes
 vignettes/*.html
 vignettes/*.pdf
+
+*.RData
+*.pdf
+*.bz2
+*.csv
+*.html
