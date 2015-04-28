@@ -1,49 +1,205 @@
 ---
-title: "TODO: Summarize data analysis"
+title: "Weather events most harmful to health and wealth"
 author: "Tanveer Ansari"
 date: "04/22/2015"
 output: html_document
 ---
+
+`r require(knitr);require(dplyr);require(ggplot2);require(reshape2);`
+`r opts_chunk$set(cache=FALSE)`
+
+```{r,results='hide',message=FALSE,warning=FALSE,include=FALSE}
+library(dplyr);library(ggplot2);library(reshape2);
+```
 ##Synopsis
-  Examine historical storm data for the United States to find out 
-  1) What types of storm events cause the most harm to population health?
-  2) What types of storm events cause the most financial loss?
-  
+Examine historical storm data for the United States to find out   
+1) What types of storm events cause the most harm to population health?  
+2) What types of storm events cause the most financial loss?  
+
+Clean, summarize and analyze the data to find the most significant weather event types  
+in both the above categories.
+
 ## DataProcessing  
-    TODO:Write description 
-    TODO: show code (echo=TRUE, cache=TRUE)
-    Note : Analysis MUST start from raw data
-###Assumption about property damage and crop damage units
-The columns are split into xxDMG and xxDMGEXP where xx is PROP/CROP. 
-The DMG column contains a number while EXP contains text
-From the description on the website  
+
+###Strategy
+* Read the data and perform any cleanup required  
+* Categorize valid data by the type of event that occured  
+* Group and summarize data by its event type to determine  
+    a) The top event types that cause fatalities and injuries, ordered by number of fatalities.    
+    b) The top event types that cause financial loss, ordered by total financial loss caused.  
+    
+*  Plot a bar chart of both the above
+
+### Steps
+Download file and read its data
+```{r readAndLoad,cache=TRUE}
+if(!file.exists("stormdata.csv.bz2")) {
+  download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2",
+                destfile = "stormdata.csv.bz2")
+  }
+
+storm<-tbl_df(read.csv("stormdata.csv.bz2",stringsAsFactors=F,na.strings=c("NA,NAN","")))
+```
+===================================================================================
+
+#### Analysis for top population health damage
+Select only those events that caused either fatalities or injuries.  
+Aggregate the data by eventtype, counting fatalities and injuries.  
+
+```{r getinjuries,cache=TRUE}
+injuries=subset(storm, FATALITIES>0 | INJURIES>0)
+inj<-injuries%>% group_by(EVTYPE)%>%summarize(fatalities=sum(FATALITIES,na.rm = T),hurt=sum(INJURIES,na.rm=T))
+```
+
+Examine quantiles for fatalities so we can pick a reasonable cut-off point.
+
+```{r}
+quantile(inj$fatalities,prob=seq(0.95,1,by=0.01))
+```
+
+The 97th percentile of fatalities is ~400 and 98th is ~700 so choosing 500 as a cut-off should pick less than 3% of the categories.  
+Select those event types that caused at least 500 fatalities or more and examine them sorted by most harmful first. 
+
+```{r picklargeinj,cache=TRUE}
+inj<-subset(inj,fatalities>500)
+arrange(inj,desc(fatalities),desc(hurt))
+```
+
+Tornadoes are clearly the worst here.  
+
+
+
+Order the eventtypes as a factor with levels in descending order of fatalities.  
+This will make our plot ordered by fatalities, highest first.
+```{r}
+inj$EVTYPE=factor(inj$EVTYPE,levels=inj$EVTYPE[order(desc(inj$fatalities))])
+```
+
+Plot the data after melting, so we can use facets to split up fatalities vs injuries.  
+
+```{r plotinjuries,fig.width=10}
+injmelt<-melt(inj,id=c("EVTYPE"),measure.vars=c("fatalities","hurt"))
+
+ggplot(injmelt,aes(x=EVTYPE,y=value,fill=factor(variable)))+geom_bar(position="dodge",stat="identity")+ggtitle(
+  "Storm Events causing Top 6 Fatalities") +labs(y="Count") + labs(x="")
+```
+Plotting the fatalities and injuries per event it is evident that Tornadoes are the most dangerous event,
+followed by excessive heat as a distant second.  
+
+===================================================================================
+
+
+#### Analysis for top economic consequence (property damange and crop damage)
+To repeat a similar analysis for economic consequences, our data needs some cleaning up.
+
+The dataset columns relevant to damage are split into xxDMG and xxDMGEXP where xx is PROP/CROP. 
+The DMG column contains a number while EXP contains text. 
+
+```{r getdamage,cache=TRUE}
+stormdmg<-subset(storm,(PROPDMG>0 & !is.na(PROPDMGEXP))|(CROPDMG>0 & !is.na(CROPDMGEXP)))
+## take only columns we are interested in
+stormdmg<-select(stormdmg,EVTYPE,PROPDMG,PROPDMGEXP,CROPDMG,CROPDMGEXP)
+```
+Select the columns we are interested in for rows with non-zero damage numbers.  
+
+Lets examine some of the suffixes in xxxEXP columns
+```{r}
+sort(unique(c(unique(stormdmg$CROPDMGEXP),unique(stormdmg$PROPDMGEXP))))
+```
+Some of the above suffixes appear to be invalid so our data needs cleaning up.  
+From the description on the website 
+
 >"Estimates should be rounded to three significant digits, followed by an alphabetical character   
 >signifying the magnitude of the number, i.e., 1.55B for $1,550,000,000. Alphabetical characters  
 >used to signify magnitude include "K" for thousands, "M" for millions, and "B" for billions"
 
-However the values in the dataset also include symbols ike "?","2","-","+","m","M" 
+However the values in the dataset also include symbols ike "?","2","-","+","m","M"   
+
 For the purposes of this analysis both uppercase and lowercase k,m and b were considered 
-to represent thousand, million and billion and all others ignored as NA
+to represent thousand, million and billion. All others were ignored by setting them to zero.
+
+```{r filterDamageExp}
+validDamage<-c("K","k","M","m","B","b")
+hdmg<-filter(stormdmg,PROPDMGEXP %in% validDamage | CROPDMGEXP %in% validDamage)
+```
+Next we shall replace invalid suffixes with 0, "m"" with a million, "b"" with a billion and "k"" with a thousand,  
+for both property and crop damageexp.
+
+```{r replaceDamageExp, cache=TRUE}
+#Replace NAs with zero
+if(any(is.na(hdmg$PROPDMGEXP))) hdmg[which(is.na(hdmg$PROPDMGEXP)),]$PROPDMGEXP=0
+#Replace K with a thousand and do the same for millions  and billions
+hdmg$PROPDMGEXP<-gsub("[Kk]",as.character(10^3),hdmg$PROPDMGEXP)
+hdmg$PROPDMGEXP<-gsub("[Mm]",as.character(10^6),hdmg$PROPDMGEXP)
+hdmg$PROPDMGEXP<-gsub("[Bb]",as.character(10^9),hdmg$PROPDMGEXP)
+
+# There are still some rows with bad values, which are 5 and 3 - replace this with 0
+hdmg$PROPDMGEXP<-gsub("5",as.character(0),hdmg$PROPDMGEXP)
+hdmg$PROPDMGEXP<-gsub("3",as.character(0),hdmg$PROPDMGEXP)
+
+
+#Repeat above steps performed on property damage, for crop damage
+if(any(is.na(hdmg$CROPDMGEXP))) hdmg[which(is.na(hdmg$CROPDMGEXP)),]$CROPDMGEXP=0
+hdmg$CROPDMGEXP<-gsub("[Kk]",as.character(10^3),hdmg$CROPDMGEXP)
+hdmg$CROPDMGEXP<-gsub("[Mm]",as.character(10^6),hdmg$CROPDMGEXP)
+hdmg$CROPDMGEXP<-gsub("[Bb]",as.character(10^9),hdmg$CROPDMGEXP)
+
+# There are still some rows with ? in CROPDMGEXP - replace this with 0
+hdmg$CROPDMGEXP<-gsub("\\?",as.character(0),hdmg$CROPDMGEXP)
+```
+
+
+
+Now that the multipliers are fixed, we can get the actual number by multiplying CROPDMG with CROPDMGEXP and the same thing for PROPDMG. 
+Lets also add add a totals column so we can sort events based on total damage caused, 
+
+```{r calcDamangeTotal}
+#Lets calculate the actual numbers in dollars and the total damage per observation
+hdmg<-mutate(hdmg,prop=PROPDMG*as.numeric(PROPDMGEXP),crop=CROPDMG*as.numeric(CROPDMGEXP),total=crop+prop)
+```
+
+
+Aggregate incidents, summing property damage by event type. 
+
+```{r arrangeDamage}
+aggdmg<-hdmg%>%group_by(EVTYPE)%>%
+  summarize(PropertyDamage=sum(prop),CropDamage=sum(crop),TotalDamage=sum(total))%>%arrange(desc(TotalDamage))
+```
+
+Take the top six most damaging event types and take a look at them
+```{r getTopDamage}
+#Take the top six
+aggdmg<-aggdmg[1:6,]
+aggdmg
+```
+
+Floods appear to be the worst.
+
+Order the eventtypes as a factor with levels in descending order of total damage (existing order of data).  
+This will make our plot ordered by total damage, highest first
+```{r}
+aggdmg$EVTYPE=factor(aggdmg$EVTYPE,levels=aggdmg$EVTYPE[order(desc(aggdmg$TotalDamage))])
+```
+
+Sorting is done so don't need the totals column anymore
+```{r}
+aggdmg$TotalDamage<-NULL
+```
+
+Plot the data after melting. The y scale is in millions for the sake of y-axis readability.
+
+```{r plotdamage, fig.width=10}
+dmg<-melt(data = aggdmg, id.vars = c("EVTYPE"), na.rm = T)
+ggplot(dmg,aes(x=EVTYPE,y=value/10^6,fill=factor(variable)))+geom_bar(position="dodge",stat="identity")+
+  ggtitle("Storm Events causing Top 6 Crop damage") + labs(y="Damage in Millions")+labs(x="")
+```
+
+===================================================================================
+
 
 ##Results
-  TODO: Show Results here
-  
-#Checklist
-1.  Check all TODOs
-2.  PLOTS:  AT LEAST one plots. Figures may have more than one plot
-3.  FIGURES: AT MOST  3 figures
-4.  Publish on RPubs.com
 
-========================================
-using R Markdown see <http://rmarkdown.rstudio.com>.
-```{r}
-summary(cars)
-```
-
-You can also embed plots, for example:
-
-```{r, echo=FALSE}
-plot(cars)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+We find that Tornadoes cause the most public health damage and heat related  incidents are next.  
+Flooding related events and hurricanes,typhoons and tornadoes caused a lot of economic damage.  
+Tornadoes appear to be severely harmful being the Number 1 cause of fatalities and Number 3 for economic consequences.  
+Flash floods were the only other event type that appeared in the top six event types for both categories.
